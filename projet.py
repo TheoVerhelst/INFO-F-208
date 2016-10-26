@@ -1,5 +1,6 @@
 from enum import Enum
 from copy import deepcopy
+from time import clock
 
 AminoAcid = Enum("AminoAcid", "A R N D C E Q G H I L K M F P S T W Y V B Z X")
 # Make the str() function print only the amino acid letter by redefining __str__
@@ -118,154 +119,183 @@ class Score:
                 else:
                     self.matrix.append([int(number) for number in line.split()])
 
-def needlmanWunsch(score, sequence1, sequence2, openPenalty, extendPenalty):
-    """Applies de Needleman-Wunsch algorithm, given a scoring matrix,
-    two sequences and a gap weight.
+class Aligner:
+    def __init__(self, score, sequence1, sequence2, openPenalty, extendPenalty):
+        self.score = score
+        self.sequence1 = sequence1
+        self.sequence2 = sequence2
+        self.openPenalty = openPenalty
+        self.extendPenalty = extendPenalty
+        self.solutions = []
+        # Execute the algorithm
+        self.needlmanWunsch()
+        self.printAlignment()
     
-    Parameters:
-        score: an instance of Score
-        sequence1, sequence2: two instances of Sequence
-        g: the weight of a gap
-    
-    Return value: The set of solutions for aligning these two sequences.
-    """
-    m, n = len(sequence1) + 1, len(sequence2) + 1
-    
-    # Construct the alignment matrix first
-    S = [[0] * n for i in range(m)]
-    backtrace = [["0"] * n for i in range(m)]
-    
-    V, W = deepcopy(S), deepcopy(S)
+    def needlmanWunsch(self):
+        """Applies de Needleman-Wunsch algorithm, given a scoring matrix,
+        two sequences and a gap weight.
         
-    for i in range(1, m):
-        for j in range(1, n):
-            V[i][j] = max(S[i - 1][j] + openPenalty, V[i - 1][j] + extendPenalty, 0)
-            W[i][j] = max(S[i][j - 1] + openPenalty, W[i][j - 1] + extendPenalty, 0)
+        Parameters:
+            score: an instance of Score
+            sequence1, sequence2: two instances of Sequence
+            g: the weight of a gap
+        
+        Return value: The set of solutions for aligning these two sequences.
+        """
+        m, n = len(self.sequence1) + 1, len(self.sequence2) + 1
+        
+        # Construct the alignment matrix first
+        self.S = [[0] * n for i in range(m)]
+        self.backtrace = [["0"] * n for i in range(m)]
+        
+        V, W = deepcopy(self.S), deepcopy(self.S)
             
-            # We use a dict to find the value and the origin string for the
-            # current cell at the same time
-            choices = {
-                "0" : 0, # For the local alignment
-                "T" : V[i][j],
-                "L" : W[i][j],
-                # We decrease the index for accessing the sequences because the
-                # sequences have one less elements than the matrices
-                "D" : S[i - 1][j - 1] + score.getScore(sequence1[i - 1], sequence2[j - 1])
-            }
-            # Find the maximum value in the dict
-            S[i][j] = max(choices.values())
-            # Add all origins that can lead to this maximum value in the backtrace
-            backtrace[i][j] = "".join([key for key in choices if choices[key] == S[i][j]])
-
-    # Then find the alignment from the backtrace, by starting from the maximum in S
-    return findAlignment(backtrace, *findMaximum(S))
-
-def findMaximum(matrix):
-    """Finds one maximum in a matrix.
-    
-    Parameters:
-        matrix: the matrix
-    
-    Return value: a tuple containing the (i, j) coordinates of the maximum
-    """
-    maximum = float("-inf")
-    for i, line in enumerate(matrix):
-        for j, value in enumerate(line):
-            if value > maximum:
-                maximum = value
-                imax, jmax = i, j
-    return imax, jmax
-    
-# TODO: remove this function
-def printMatrix(matrix, sequence1, sequence2):
-    size = 8
-    print(" ", "".join([" " * size] + [str(s).rjust(size) for s in sequence2]))
-    for i, line in enumerate(matrix):
-        if i > 0:
-            print(sequence1[i - 1], end=" ")
-        else:
-            print("  ", end="")
-        for cell in line:
-            print(str(cell).rjust(size), end='')
-        print()
-    
-def findAlignment(backtrace, i, j, currentSolution = "", solutions = None):
-    """Recursively iterates on the backtrace matrix to find the path from the
-    bottom-right cell to the top-left cell.
-    
-    Parameters:
-        backtrace: the matrix indicating the origin of each cell
-        i, j: the coordinates of the currently explored cell
-        currentSolution: a string reprensenting the currently explored solution
-        solution: the list of all valid solution found so far
-    
-    Return value: the list of solutions
-    """
-    if solutions == None:
-        solutions = []
-    
-    # Stop if we are in the top-left cell, or in a zero cell
-    if (i == 0 and j == 0) or "0" in backtrace[i][j]:
-        solutions.append({"origin" : (i, j), "path" : currentSolution})
-    else:
-        for possibility in backtrace[i][j]:
-            currentSolution += possibility
-            if possibility == "T":
-                findAlignment(backtrace, i - 1, j, currentSolution, solutions)
-            elif possibility == "L":
-                findAlignment(backtrace, i, j - 1, currentSolution, solutions)
-            elif possibility == "D":
-                findAlignment(backtrace, i - 1, j - 1, currentSolution, solutions)
-            currentSolution = currentSolution[:-1]
-    return solutions
-    
-def printAlignment(sequence1, sequence2, solutions):
-    """Prints to stdout all the alignemnts given in parameters.
-    
-    Parameters:
-        sequence1, sequence2: the two aligned instances of Sequence
-        solutions: the list of all possible alignments
-    """
-    gapChar = "-"
-    indelChar = " "
-    conservationChar = ":"
-    mutationChar = "."
-    maxLineLength = 120
-    print(len(solutions), "solutions were found.")
-    
-    for k, solution in enumerate(solutions):
-        sequence1Str, sequence2Str, midStr= "", "", ""
-        i, j = solution["origin"]
-        i -= 1
-        j -= 1
-        
-        # Iterate over the solution backward
-        for origin in reversed(solution["path"]):
-            if origin == "T":
-                i += 1
-                sequence1Str += str(sequence1[i])
-                sequence2Str += gapChar
-                midStr += indelChar
-            elif origin == "L":
-                j += 1
-                sequence1Str += gapChar
-                sequence2Str += str(sequence2[j])
-                midStr += indelChar
-            elif origin == "D":
-                i += 1
-                j += 1
-                sequence1Str += str(sequence1[i])
-                sequence2Str += str(sequence2[j])
-                midStr += conservationChar if sequence1[i] == sequence2[j] else mutationChar
+        for i in range(1, m):
+            for j in range(1, n):
+                V[i][j] = max(self.S[i - 1][j] + self.openPenalty, V[i - 1][j] + self.extendPenalty, 0)
+                W[i][j] = max(self.S[i][j - 1] + self.openPenalty, W[i][j - 1] + self.extendPenalty, 0)
                 
-        print("Solution No " + str(k + 1) + ":")
-        for k in range(0, ((len(sequence1Str) - 1) // maxLineLength) + 1):
-            slice = (k * maxLineLength, min((k + 1) * maxLineLength, len(sequence1Str)))
-            print("Sequence 1:", sequence1Str[slice[0]:slice[1]])
-            print("           ", midStr[slice[0]:slice[1]])
-            print("Sequence 2:", sequence2Str[slice[0]:slice[1]])
+                # We use a dict to find the value and the origin string for the
+                # current cell at the same time
+                choices = {
+                    "0" : 0, # For the local alignment
+                    "T" : V[i][j],
+                    "L" : W[i][j],
+                    # We decrease the index for accessing the sequences because the
+                    # sequences have one less elements than the matrices
+                    "D" : self.S[i - 1][j - 1] + self.score.getScore(self.sequence1[i - 1], self.sequence2[j - 1])
+                }
+                # Find the maximum value in the dict
+                self.S[i][j] = max(choices.values())
+                if self.S[i][j] == 0:
+                    self.backtrace[i][j] = "0"
+                else:
+                    # Add all origins that can lead to this maximum value in the backtrace
+                    self.backtrace[i][j] = "".join([key for key in choices if choices[key] == self.S[i][j]])
+
+        # Find the alignment, starting from the cell with maximum value in S
+        self.findAlignment(*self.findMaximum(self.S))
+
+    def findMaximum(self, matrix):
+        """Finds one maximum in a matrix.
+        
+        Parameters:
+            matrix: the matrix
+        
+        Return value: a tuple containing the (i, j) coordinates of the maximum
+        """
+        maximum = float("-inf")
+        for i, line in enumerate(matrix):
+            for j, value in enumerate(line):
+                if value > maximum:
+                    maximum = value
+                    imax, jmax = i, j
+        return imax, jmax
+        
+    #TODO remove this
+    def printMatrix(self, matrix):
+        """Prints a matrix.
+        This function is used to debug an test, it is not part of the final
+        output.
+        """
+        cellSize = 8
+        print(" " * (cellSize + 1), "".join([str(aa).rjust(cellSize) for aa in self.sequence2]))
+        for i, line in enumerate(matrix):
+            print(self.sequence1[i - 1] if i > 0 else " ", end=" ")
+            for cell in line:
+                print(str(cell).rjust(cellSize), end="")
             print()
-        print()
+        
+    def findAlignment(self, i, j, currentSolution = ""):
+        """Recursively iterates on the backtrace matrix to find valid paths from
+        the cell at position (i, j) to a cell with value 0.
+        All paths meeting this criteria are appended to self.solutions.
+        
+        Parameters:
+            i, j: the coordinates of the currently explored cell
+            currentSolution: a string reprensenting the currently explored solution
+        """
+        
+        # Stop if we are in the top-left cell, or in a zero cell
+        if (i == 0 and j == 0) or "0" in self.backtrace[i][j]:
+            self.solutions.append({"origin" : (i, j), "path" : currentSolution})
+        else:
+            for possibility in self.backtrace[i][j]:
+                currentSolution += possibility
+                if possibility == "T":
+                    self.findAlignment(i - 1, j, currentSolution)
+                elif possibility == "L":
+                    self.findAlignment(i, j - 1, currentSolution)
+                elif possibility == "D":
+                    self.findAlignment(i - 1, j - 1, currentSolution)
+                currentSolution = currentSolution[:-1]
+        
+    def printAlignment(self):
+        """Prints all the alignments found so far in self.solutions.
+        """
+        gapChar = "-"
+        indelChar = " "
+        conservationChar = ":"
+        mutationChar = "."
+        # The maximum number of amino acid displayed on a line
+        maxLineLength = 120
+        # The interval between two index hints dipslayed above or below the sequence
+        indexHintInterval = 10
+        
+        print(len(self.solutions), "solutions were found.")
+        
+        for k, solution in enumerate(self.solutions):
+            sequence1Str, sequence2Str, midStr= "", "", ""
+            indexHints1, indexHints2 = "", ""
+            i, j = solution["origin"]
+            i -= 1
+            j -= 1
+            
+            # Iterate over the solution backward
+            for origin in reversed(solution["path"]):
+                if origin == "T":
+                    i += 1
+                    sequence1Str += str(sequence1[i])
+                    sequence2Str += gapChar
+                    midStr += indelChar
+                elif origin == "L":
+                    j += 1
+                    sequence1Str += gapChar
+                    sequence2Str += str(sequence2[j])
+                    midStr += indelChar
+                elif origin == "D":
+                    i += 1
+                    j += 1
+                    sequence1Str += str(sequence1[i])
+                    sequence2Str += str(sequence2[j])
+                    midStr += conservationChar if self.sequence1[i] == self.sequence2[j] else mutationChar
+                
+                indexHints1 += " "
+                indexHints2 += " "
+                if i > 0 and i % indexHintInterval == 0:
+                    # Discard some characters at the end to make room for the index
+                    # hint, and add the index hint
+                    indexHints1 = indexHints1[:-len(str(i))] + str(i)
+                    
+                if j > 0 and j % indexHintInterval == 0:
+                    indexHints2 = indexHints2[:-len(str(j))] + str(j)
+            
+            # Discard the first character, so that printed sequences start indexing
+            # at 1 rather than 0 (because the index hints are shifted to the left)
+            indexHints1 = indexHints1[1:]
+            indexHints2 = indexHints2[1:]
+            print("Solution No " + str(k + 1) + ":")
+            
+            for k in range(0, ((len(sequence1Str) - 1) // maxLineLength) + 1):
+                indices = slice(k * maxLineLength, min((k + 1) * maxLineLength, len(sequence1Str)))
+                print("           ", indexHints1[indices])
+                print("Sequence 1:", sequence1Str[indices])
+                print("           ", midStr[indices])
+                print("Sequence 2:", sequence2Str[indices])
+                print("           ", indexHints2[indices])
+                print()
+                
+            print()
         
 if __name__ == "__main__":
     # Script parameters
@@ -280,5 +310,7 @@ if __name__ == "__main__":
     score = Score(scoringMatrixFilename)
     sequence1 = Sequence(sequence1File, sequence1Id)
     sequence2 = Sequence(sequence2File, sequence2Id)
+    t1 = clock()
 
-    printAlignment(sequence1, sequence2, needlmanWunsch(score, sequence1, sequence2, openPenalty, extendPenalty))
+    aligner = Aligner(score, sequence1, sequence2, openPenalty, extendPenalty)
+    print(clock() - t1)

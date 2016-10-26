@@ -1,6 +1,6 @@
 from enum import Enum
 from copy import deepcopy
-from time import clock
+import cProfile
 
 AminoAcid = Enum("AminoAcid", "A R N D C E Q G H I L K M F P S T W Y V B Z X")
 # Make the str() function print only the amino acid letter by redefining __str__
@@ -167,11 +167,8 @@ class Aligner:
                 }
                 # Find the maximum value in the dict
                 self.S[i][j] = max(choices.values())
-                if self.S[i][j] == 0:
-                    self.backtrace[i][j] = "0"
-                else:
-                    # Add all origins that can lead to this maximum value in the backtrace
-                    self.backtrace[i][j] = "".join([key for key in choices if choices[key] == self.S[i][j]])
+                # Add all origins that can lead to this maximum value in the backtrace
+                self.backtrace[i][j] = "".join([key for key in choices if choices[key] == self.S[i][j]])
 
         # Find the alignment, starting from the cell with maximum value in S
         self.findAlignment(*self.findMaximum(self.S))
@@ -255,19 +252,19 @@ class Aligner:
             for origin in reversed(solution["path"]):
                 if origin == "T":
                     i += 1
-                    sequence1Str += str(sequence1[i])
+                    sequence1Str += str(self.sequence1[i])
                     sequence2Str += gapChar
                     midStr += indelChar
                 elif origin == "L":
                     j += 1
                     sequence1Str += gapChar
-                    sequence2Str += str(sequence2[j])
+                    sequence2Str += str(self.sequence2[j])
                     midStr += indelChar
                 elif origin == "D":
                     i += 1
                     j += 1
-                    sequence1Str += str(sequence1[i])
-                    sequence2Str += str(sequence2[j])
+                    sequence1Str += str(self.sequence1[i])
+                    sequence2Str += str(self.sequence2[j])
                     midStr += conservationChar if self.sequence1[i] == self.sequence2[j] else mutationChar
                 
                 indexHints1 += " "
@@ -296,8 +293,8 @@ class Aligner:
                 print()
                 
             print()
-        
-if __name__ == "__main__":
+
+def main():
     # Script parameters
     scoringMatrixFilename = "blosum/blosum50.iij"
     sequence1File = "maguk-sequences.fasta"
@@ -310,7 +307,8 @@ if __name__ == "__main__":
     score = Score(scoringMatrixFilename)
     sequence1 = Sequence(sequence1File, sequence1Id)
     sequence2 = Sequence(sequence2File, sequence2Id)
-    t1 = clock()
 
     aligner = Aligner(score, sequence1, sequence2, openPenalty, extendPenalty)
-    print(clock() - t1)
+
+if __name__ == "__main__":
+    cProfile.run("main()")

@@ -1,6 +1,5 @@
 from enum import Enum
 from copy import deepcopy
-import cProfile
 
 AminoAcid = Enum("AminoAcid", "A R N D C E Q G H I L K M F P S T W Y V B Z X")
 # Make the str() function print only the amino acid letter by redefining __str__
@@ -311,4 +310,4 @@ def main():
     aligner = Aligner(score, sequence1, sequence2, openPenalty, extendPenalty)
 
 if __name__ == "__main__":
-    cProfile.run("main()")
+    main()

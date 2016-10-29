@@ -259,7 +259,7 @@ class Aligner:
                 self.solutions = []
                 start_cell = self.find_maximum(self.S)
                 self.find_alignment(*start_cell)
-                self.print_alignment()
+                self.print_alignment(True, k)
         
     def fill_cell(self, i, j):
         """Compute sthe value in self.S, self.W, self.v and self.backtrace for
@@ -348,7 +348,7 @@ class Aligner:
                 if not self.display_all_solutions:
                     return
         
-    def print_alignment(self):
+    def print_alignment(self, sub_alignment = False, sub_alignment_number = 0):
         """Prints all the alignments found so far in self.solutions."""
         gap_char = "-"
         indel_char = " "
@@ -358,7 +358,10 @@ class Aligner:
         index_hint_interval = 10
         max_line_length = self.max_line_length - len("Sequence 1: ")
         
-        print(len(self.solutions), "solutions were found.")
+        if sub_alignment:
+            print("Sub alignment No", str(sub_alignment_number + 1) + ":")
+        else:
+            print(len(self.solutions), "solution" + ("s" if len(self.solutions) > 1 else ""), "were found.")
         
         for k, solution in enumerate(self.solutions):
             sequence_A_str, sequence_B_str, mid_str= "", "", ""
@@ -399,7 +402,9 @@ class Aligner:
             # at 1 rather than 0 (because the index hints are shifted to the left)
             index_hints_1 = index_hints_1[1:]
             index_hints_2 = index_hints_2[1:]
-            print("Solution No " + str(k + 1) + ":")
+            
+            if len(self.solutions) > 1:
+                print("Solution No " + str(k + 1) + ":")
             
             for k in range(0, ((len(sequence_A_str) - 1) // max_line_length) + 1):
                 indices = slice(k * max_line_length,

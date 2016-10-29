@@ -85,36 +85,13 @@ class Matrix:
         """
         self.matrix = [[value] * n for i in range(m)]
     
-    def normalize_key(self, key):
-        if isinstance(key, tuple):
-            i, j = key[0], key[1]
-            if i < 0:
-                i %= len(self.matrix)
-            if j < 0:
-                j %= len(self.matrix[i])
-            if i > len(self.matrix):
-                self.matrix.extend([None] * (i - len(matrix)))
-            if j > len(self.matrix[i]):
-                self.matrix[i].extend([None] * (j - len(matrix[i])))
-            return (i, j)
-        elif isinstance(key, int):
-            if key < 0:
-                key %= len(self.matrix)
-            if key > len(self.matrix):
-                self.matrix.extend([None] * (key - len(matrix)))
-            return key
-        else:
-            raise TypeError("wrong key type used in item access: " + str(type(key)))
-    
     def __getitem__(self, key):
-        key = self.normalize_key(key)
         if isinstance(key, tuple):
             return self.matrix[key[0]][key[1]]
         else:
             return self.matrix[key]
             
     def __setitem__(self, key, value):
-        key = self.normalize_key(key)
         if isinstance(key, tuple):
             self.matrix[key[0]][key[1]] = value
         else:

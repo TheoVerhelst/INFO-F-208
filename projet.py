@@ -75,6 +75,7 @@ class Matrix:
     optimisations easily, without having to change the whole code.
     All lines don't have to have the same length, so it may be used to represent
     a triangular matrix.
+    
     """
     def __init__(self, m = 0, n = 0, value=None):
         """Construct the matrix
@@ -220,9 +221,11 @@ class Aligner:
         if not self.local:
             for i in range(m):
                 self.S[i, 0] = self.open_penalty + i * self.extend_penalty
+                self.backtrace[i, 0] = "T"
                 
             for j in range(1, n):
                 self.S[0, j] = self.open_penalty + j * self.extend_penalty
+                self.backtrace[0, j] = "L"
         
         V, W = deepcopy(self.S), deepcopy(self.S)
             
@@ -254,8 +257,6 @@ class Aligner:
                 # Add all origins that can lead to this maximum value in the backtrace
                 self.backtrace[i, j] = "".join([key for key in choices \
                         if choices[key] == self.S[i, j]])
-
-        print(self.backtrace)
         
         # The first cell of the solution is the maximum if we do local alignment,
         # or the bottom-right cell if we do global alignment
@@ -362,10 +363,10 @@ class Aligner:
 def main():
     # Script parameters
     scoring_matrix_filename = "blosum/blosum50.iij"
-    sequence_A_file = "SH3-sequence.fasta"
-    sequence_A_id = "P12931"
-    sequence_B_file = "SH3-sequence.fasta"
-    sequence_B_id = "P62993"
+    sequence_A_file = "maguk-sequences.fasta"
+    sequence_A_id = "Q12959"
+    sequence_B_file = "maguk-sequences.fasta"
+    sequence_B_id = "Q92796"
     
     # Get the terminal width
     terminal_width = int(os.popen('stty size', 'r').read().split()[1])
@@ -378,7 +379,7 @@ def main():
             open_penalty = -12,
             extend_penalty = -2,
             local = False,
-            display_all_solutions = True,
+            display_all_solutions = False,
             max_line_length = terminal_width)
 
 if __name__ == "__main__":

@@ -164,15 +164,17 @@ class Score:
                     found_amino_acid_list = True
                 else:
                     self.matrix.append([int(number) for number in line.split()])
-
+    
 class Aligner:
     """Holds functions and variable related to the sequence alignment."""
     
+    move_values = {"D" : (-1, -1), "T" : (-1, 0), "L" : (0, -1), "0" : (0, 0)}
+
     def __init__(self, score, sequence_A, sequence_B,
             open_penalty = -12,
             extend_penalty = -2,
             local = True,
-            sub_Alignments = 1,
+            sub_alignments = 0,
             display_all_solutions = True,
             max_line_length = 80):
         self.score = score
@@ -181,7 +183,7 @@ class Aligner:
         self.open_penalty = open_penalty
         self.extend_penalty = extend_penalty
         self.local = local
-        self.sub_Alignments = sub_Alignments
+        self.sub_alignments = sub_alignments
         self.display_all_solutions = display_all_solutions
         self.solutions = []
         # The maximum number of characters displayed on a line
@@ -189,7 +191,15 @@ class Aligner:
         
         # Execute the algorithm
         self.fill_matrices()
-        self.print_alignment()
+
+    @staticmethod
+    def make_move(position, move_char, reverted = False):
+        if not reverted:
+            return position[0] + Aligner.move_values[move_char][0], \
+                    position[1] + Aligner.move_values[move_char][1]
+        else:
+            return position[0] - Aligner.move_values[move_char][0], \
+                    position[1] - Aligner.move_values[move_char][1]
 
     @staticmethod
     def find_maximum(matrix):
@@ -209,59 +219,108 @@ class Aligner:
         return i_max, j_max
     
     def fill_matrices(self):
-        """Applies de Smith-Waterman or the Needleman-Wunsch algorithm,
+        """Applies the Smith-Waterman or the Needleman-Wunsch algorithm,
         depending on wether we do local or global alignment.
         """
         m, n = len(self.sequence_A) + 1, len(self.sequence_B) + 1
         
         # Construct the alignment matrix first
         self.S = Matrix(m, n, 0)
-        self.backtrace = Matrix(m, n, "0")
+        self.backtrace = Matrix(m, n, ["0"])
         
         if not self.local:
             for i in range(m):
                 self.S[i, 0] = self.open_penalty + i * self.extend_penalty
-                self.backtrace[i, 0] = "T"
+                self.backtrace[i, 0] = ["T"]
                 
             for j in range(1, n):
                 self.S[0, j] = self.open_penalty + j * self.extend_penalty
-                self.backtrace[0, j] = "L"
+                self.backtrace[0, j] = ["L"]
         
-        V, W = deepcopy(self.S), deepcopy(self.S)
-            
+        self.V, self.W = deepcopy(self.S), deepcopy(self.S)
+        
+        # Compute the value of all cells of the matrix
         for i in range(1, m):
             for j in range(1, n):
-                V[i, j] = max(self.S[i - 1, j] + self.open_penalty,
-                        V[i - 1, j] + self.extend_penalty)
-                W[i, j] = max(self.S[i, j - 1] + self.open_penalty,
-                        W[i, j - 1] + self.extend_penalty)
-                
-                # We use a dict to find the value and the origin string for the
-                # current cell at the same time
-                choices = {
-                    "T" : V[i, j],
-                    "L" : W[i, j],
-                    # We decrease the index for accessing the sequences because the
-                    # sequences have one less elements than the matrices
-                    "D" : self.S[i - 1, j - 1] + self.score.getScore(
-                            self.sequence_A[i - 1], self.sequence_B[j - 1])
-                }
-                
-                if self.local:
-                    choices["0"] = 0
-                    V[i, j] = max(V[i, j], 0)
-                    W[i, j] = max(W[i, j], 0)
-                    
-                # Find the maximum value in the dict
-                self.S[i, j] = max(choices.values())
-                # Add all origins that can lead to this maximum value in the backtrace
-                self.backtrace[i, j] = "".join([key for key in choices \
-                        if choices[key] == self.S[i, j]])
+                self.fill_cell(i, j)
         
         # The first cell of the solution is the maximum if we do local alignment,
         # or the bottom-right cell if we do global alignment
-        start_cell = self.find_maximum(self.S) if self.local else m - 1, n - 1
+        start_cell = self.find_maximum(self.S) if self.local else (m - 1, n - 1)
         self.find_alignment(*start_cell)
+        
+        #Print the result
+        self.print_alignment()
+        
+        # Search for the remaining subalignments
+        if self.local:
+            for k in range(self.sub_alignments):
+                self.clear_path(*start_cell, self.solutions[0]["path"])
+                self.solutions = []
+                start_cell = self.find_maximum(self.S)
+                self.find_alignment(*start_cell)
+                self.print_alignment()
+        
+    def fill_cell(self, i, j):
+        """Compute sthe value in self.S, self.W, self.v and self.backtrace for
+        the cell at position (i, j) according to the local or global alignment
+        rules.
+        """
+        self.V[i, j] = max(self.S[i - 1, j] + self.open_penalty,
+                self.V[i - 1, j] + self.extend_penalty)
+        self.W[i, j] = max(self.S[i, j - 1] + self.open_penalty,
+                self.W[i, j - 1] + self.extend_penalty)
+        
+        # We use a dict to find the value and the origin string for the
+        # current cell at the same time
+        choices = {
+            "T" : self.V[i, j],
+            "L" : self.W[i, j],
+            # We decrease the index for accessing the sequences because the
+            # sequences have one less elements than the matrices
+            "D" : self.S[i - 1, j - 1] + self.score.getScore(
+                    self.sequence_A[i - 1], self.sequence_B[j - 1])
+        }
+        
+        if self.local:
+            choices["0"] = 0
+            self.V[i, j] = max(self.V[i, j], 0)
+            self.W[i, j] = max(self.W[i, j], 0)
+            
+        # Find the maximum value in the dict
+        self.S[i, j] = max(choices.values())
+        
+        # Add all origins that can lead to this maximum value in the backtrace
+        self.backtrace[i, j] = "".join([key for key in choices \
+                if choices[key] == self.S[i, j]])
+
+    def clear_path(self, i, j, path):
+        """Fills with zeros cells of the solution of a local alignment in order
+        to compute the next subalignment. It also recomputes the cells impacted
+        by the zeroing.
+        
+        Parameters:
+            i, j: the coordinates of the first cell of the path
+            path: the list of moves in this solution
+        """
+        cleared_cells = set()
+        
+        for move in path:
+            self.S[i, j] = 0
+            self.V[i, j] = 0
+            self.W[i, j] = 0
+            cleared_cells.add((i, j))
+            i, j = self.make_move((i, j), move)
+        first_cell = (i, j)
+        
+        for i in range(first_cell[0], len(self.sequence_A) + 1):
+            for j in range(first_cell[1], len(self.sequence_B) + 1):
+                for origin in self.backtrace[i, j]:
+                    if (i, j) not in cleared_cells \
+                            and self.make_move((i, j), origin) in cleared_cells:
+                        self.fill_cell(i, j)
+                        cleared_cells.add((i, j))
+        
         
     def find_alignment(self, i, j, current_solution = ""):
         """Recursively iterates on the backtrace matrix to find valid paths from
@@ -282,12 +341,8 @@ class Aligner:
             self.solutions.append({"origin" : (i, j), "path" : current_solution})
         else:
             for possibility in self.backtrace[i, j]:
-                if possibility == "T":
-                    self.find_alignment(i - 1, j, current_solution + possibility)
-                elif possibility == "L":
-                    self.find_alignment(i, j - 1, current_solution + possibility)
-                elif possibility == "D":
-                    self.find_alignment(i - 1, j - 1, current_solution + possibility)
+                self.find_alignment(*self.make_move((i, j), possibility),
+                        current_solution + possibility)
                 
                 # Terminate after the first possiblity if we need only one solution
                 if not self.display_all_solutions:
@@ -314,19 +369,17 @@ class Aligner:
             
             # Iterate over the solution backward
             for origin in reversed(solution["path"]):
+                i, j = self.make_move((i, j), origin, reverted = True)
+                
                 if origin == "T":
-                    i += 1
                     sequence_A_str += str(self.sequence_A[i])
                     sequence_B_str += gap_char
                     mid_str += indel_char
                 elif origin == "L":
-                    j += 1
                     sequence_A_str += gap_char
                     sequence_B_str += str(self.sequence_B[j])
                     mid_str += indel_char
                 elif origin == "D":
-                    i += 1
-                    j += 1
                     sequence_A_str += str(self.sequence_A[i])
                     sequence_B_str += str(self.sequence_B[j])
                     mid_str += conservation_char if self.sequence_A[i] \
@@ -364,9 +417,9 @@ def main():
     # Script parameters
     scoring_matrix_filename = "blosum/blosum50.iij"
     sequence_A_file = "maguk-sequences.fasta"
-    sequence_A_id = "Q12959"
+    sequence_A_id = "O14936"
     sequence_B_file = "maguk-sequences.fasta"
-    sequence_B_id = "Q92796"
+    sequence_B_id = "Q86UL8"
     
     # Get the terminal width
     terminal_width = int(os.popen('stty size', 'r').read().split()[1])
@@ -378,8 +431,9 @@ def main():
     Aligner(score, sequence_A, sequence_B,
             open_penalty = -12,
             extend_penalty = -2,
-            local = False,
+            local = True,
             display_all_solutions = False,
+            sub_alignments = 3,
             max_line_length = terminal_width)
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ AminoAcid = Enum("AminoAcid", "A R N D C E Q G H I L K M F P S T W Y V B Z X")
 AminoAcid.__str__ = lambda self: self.name[-1]
 
 class Sequence:
-    """Represents a sequence of amino acids (with no further semantic).
+    """Represents a sequence of amino acids.
     It is suited to compute the best alignment between two sequences."""
     
     def __init__(self, filename, sequence_id):
@@ -108,6 +108,7 @@ class Matrix:
         return res
             
     def append(self, iterable):
+        """Adds a line to the bottom of the matrix."""
         self.matrix.append(list(iterable))
     
 class Score:
@@ -177,6 +178,7 @@ class Aligner:
             sub_alignments = 0,
             display_all_solutions = True,
             max_line_length = 80):
+        """Constructor, with all the parameters of the algorithm."""
         self.score = score
         self.sequence_A = sequence_A
         self.sequence_B = sequence_B
@@ -193,13 +195,25 @@ class Aligner:
         self.fill_matrices()
 
     @staticmethod
-    def make_move(position, move_char, reverted = False):
+    def make_move(coordinates, move_char, reverted = False):
+        """Return the tuple coordinates, after that the specified movement has
+        been applied to it.
+        
+        Parameters:
+            coordinates: a tuple of integers
+            move_char: one of the key of Aligner.move_values
+            reverted: indicates whether the movement has to be negated before
+                being applied.
+        
+        Return value: coordinates +- Aligned.move_values[move_char]
+        """
+            
         if not reverted:
-            return position[0] + Aligner.move_values[move_char][0], \
-                    position[1] + Aligner.move_values[move_char][1]
+            return coordinates[0] + Aligner.move_values[move_char][0], \
+                    coordinates[1] + Aligner.move_values[move_char][1]
         else:
-            return position[0] - Aligner.move_values[move_char][0], \
-                    position[1] - Aligner.move_values[move_char][1]
+            return coordinates[0] - Aligner.move_values[move_char][0], \
+                    coordinates[1] - Aligner.move_values[move_char][1]
 
     @staticmethod
     def find_maximum(matrix):
@@ -349,7 +363,12 @@ class Aligner:
                     return
         
     def print_alignment(self, sub_alignment = False, sub_alignment_number = 0):
-        """Prints all the alignments found so far in self.solutions."""
+        """Prints all the alignments found so far in self.solutions.
+        
+        Parameters:
+            sub_alignment: indicates whether we print a sub-alignment or not.
+            sub_alignment_number: the index of the sub-alignment, if applicable.
+        """
         gap_char = "-"
         indel_char = " "
         conservation_char = ":"

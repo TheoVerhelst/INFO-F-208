@@ -125,8 +125,8 @@ class Score:
         """
         self.load_from_file(filename)
     
-    def getScore(self, amino_acid_A, amino_acid_B):
-        """Returns the score of matching between two amino acids according to
+    def get_score(self, amino_acid_A, amino_acid_B):
+        """Returns the match score between two amino acids according to
         the loaded matrix.
         """
         index_A = self.indices.index(amino_acid_A)
@@ -266,7 +266,7 @@ class Aligner:
         #Print the result
         self.print_alignment()
         
-        # Search for the remaining subalignments
+        # Search for remaining subalignments
         if self.local:
             for k in range(self.sub_alignments):
                 self.clear_path(*start_cell, self.solutions[0]["path"])
@@ -276,7 +276,7 @@ class Aligner:
                 self.print_alignment(True, k)
         
     def fill_cell(self, i, j):
-        """Compute sthe value in self.S, self.W, self.v and self.backtrace for
+        """Computes the value in self.S, self.W, self.v and self.backtrace for
         the cell at position (i, j) according to the local or global alignment
         rules.
         """
@@ -292,7 +292,7 @@ class Aligner:
             "L" : self.W[i, j],
             # We decrease the index for accessing the sequences because the
             # sequences have one less elements than the matrices
-            "D" : self.S[i - 1, j - 1] + self.score.getScore(
+            "D" : self.S[i - 1, j - 1] + self.score.get_score(
                     self.sequence_A[i - 1], self.sequence_B[j - 1])
         }
         
@@ -446,7 +446,9 @@ def main():
     sequence_B_id = "Q86UL8"
     
     # Get the terminal width
+    # If this line raises an error, just comment it and uncomment the following line
     terminal_width = int(os.popen('stty size', 'r').read().split()[1])
+    #terminal_width = 80
 
     score = Score(scoring_matrix_filename)
     sequence_A = Sequence(sequence_A_file, sequence_A_id)

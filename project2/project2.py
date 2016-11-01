@@ -1,4 +1,5 @@
 from os.path import splitext
+from math import log2
 
 amino_acids = "ARNDCEQGHILKMFPSTWYV"
 
@@ -147,6 +148,52 @@ def weighted_frequencies(clusters):
                                 * col_i.count(b) * col_j.count(a)
             f[a, b] = f_ab
     return f
+    
+def biological_occurence_probabilities(f):
+    q = deepcopy(f)
+    upper_sum = 0
+    
+    for a in amino_acids:
+        for b in amino_acids[amino_acids.find(a):]:
+            upper_sum += f[a, b]
+    
+    for a in amino_acids:
+        for b in amino_acids[amino_acids.find(a):]:
+            q[a, b] = f[a, b] / upper_sum
+    
+    return q
+
+def residue_probablities(q):
+    
+    p = [0] * len(amino_acids)
+    
+    for i, a in enumerate(amino_acids):
+        p[i] = (sum([q[a, b] for b in amino_acids]) + q[a, a]) / 2
+    
+    return p
+    
+def expected_frequencies(p):
+    
+    e = CharMatrix(amino_acids)
+    
+    for a in amino_acids:
+        for b in amino_acids[amino_acids.find(a):]:
+            if a == b:
+                e[a, b] = p[amino_acids.index(a)] ** 2
+            else:
+                e[a, b] = p[amino_acids.index(a)] * p[amino_acids.index(b)] * 2
+                
+    return e
+
+def blosum(q, e):
+    
+    s = CharMatrix(amino_acids)
+    
+    for a in amino_acids:
+        for b in amino_acids[amino_acids.find(a):]:
+            s[a, b] = 2 * log2(q[a, b] / e[a, b])
+    
+    return s
 
 def main():
     # Generate PDZ-domain-A.fasta and PDZ-domain-B.fasta

@@ -1,5 +1,8 @@
 from os.path import splitext
 from math import log2
+from statistics import mean
+from copy import deepcopy
+import cProfile
 
 amino_acids = "ARNDCEQGHILKMFPSTWYV"
 
@@ -27,8 +30,8 @@ class CharMatrix:
     def __str__(self):
         """Converts the matrix to a string."""
         
-        cell_width = max([max([len(str(c)) for c in line]) for line in self.matrix])
-        res = (" " * cell_width) + " ".join([c for c in self.keys])
+        cell_width = max(max(len(str(c)) for c in line) for line in self.matrix)
+        res = (" " * cell_width) + " ".join(c for c in self.keys) + "\n"
         
         for i, line in enumerate(self.matrix):
             res += str(self.keys[i]).rjust(cell_width)
@@ -44,7 +47,7 @@ class CharMatrix:
         """Adds a line to the bottom of the matrix."""
         self.matrix.append(list(iterable))
     
-def split_domain(domain_filename, blocks_number):
+def split_domain(domain_filename, number_blocks):
     """Reads a .fasta file containing blocks of a domain, and writes the blocks
     in separate files. The blocks files have the same name as the domain file,
     except that a letter is appended just before the extension.
@@ -56,13 +59,15 @@ def split_domain(domain_filename, blocks_number):
     
     Parameters:
         domain_filename: the filename of the domain file
-        blocks_number: the number of differents blocks contained in the file
+        number_blocks: the number of differents blocks contained in the file
+    
+    Return value: the filenames of the created files
     """
     
     # Create the filenames of the block files
     root, extension = splitext(domain_filename)
     block_filenames = [root + "-" + chr(ord("A") + i) + extension \
-            for i in range(blocks_number)]
+            for i in range(number_blocks)]
     
     # Open the block files
     block_files = [open(filename, "w") for filename in block_filenames]
@@ -72,28 +77,31 @@ def split_domain(domain_filename, blocks_number):
             for i, line in enumerate(domain_file):
                 # local_index is 0 if the line is an identifier line,
                 # or (1 + the current block) otherwise
-                local_index = i % (blocks_number + 1)
+                local_index = i % (number_blocks + 1)
                 if local_index != 0:
                     block_files[local_index - 1].write(line)
     finally:
         for block_file in block_files:
             block_file.close()
+    
+    return block_filenames
 
 def identity(string_a, string_b):
     """Computes the identity between two strings, in the range [0, 1]."""
     
-    length = min(len(string_a), len(string_b))
     count = 0
-    for i in range(length):
-        if string_a[i] == string_b[i]:
+    for a, b in zip(string_a, string_b):
+        if a == b:
             count += 1
-    return count / length
+    return count / min(len(string_a), len(string_b))
 
 def is_accepted_in_cluster(sequence, cluster, required_identity):
-    """Check if a sequence can be accepted in a cluster."""
+    """Check if a sequence can be accepted in a cluster.
+    Although the test is rather simple, we could think about more complicated
+    criterion, this is why it is a separate function."""
     
-    identity = max([identify(sequence, sequence_2) for sequence_2 in cluster])
-    return identity >= required_identity
+    # Just test the first sequence of the cluster
+    return identity(cluster[0], sequence) >= required_identity
 
 def make_clusters(block_filename, required_identity):
     """Create a list of clusters from the block file, and based on the given
@@ -113,6 +121,7 @@ def make_clusters(block_filename, required_identity):
                     # Add it if the cluster can accept it
                     cluster.append(sequence)
                     found = True
+                    break
                     
             if not found:
                 # Create a new cluster if there are no acceptable one
@@ -124,32 +133,42 @@ def weighted_frequencies(clusters):
     
     f = CharMatrix(amino_acids, 0)
     clusters_weights = [1 / len(cluster) for cluster in clusters]
-    columns = len(clusters[0][0])
+    number_columns = len(clusters[0][0])
+    counts = []
     
-    # Iterate over each possible pair of amino acids
-    for a in amino_acids:
-        for b in amino_acids[amino_acids.find(a):]:
-            f_ab = 0 # Work on a temp variable, to save matrix accesses
-            
-            # Iterate over each possible pair of distinct clusters
-            for i in range(len(clusters)):
-                for j in range(i + 1, len(clusters)):
-                    
-                    # For each column of amino acid
-                    for col in range(columns):
-                        # Get all the amino acids of the current column in
-                        # both clusters
-                        col_i = "".join([seq[col] for seq in clusters[i]])
-                        col_j = "".join([seq[col] for seq in clusters[j]])
-                        
-                        f_ab += clusters_weights[i] * clusters_weights[j] \
-                                * col_i.count(a) * col_j.count(b)
-                        f_ab += clusters_weights[i] * clusters_weights[j] \
-                                * col_i.count(b) * col_j.count(a)
-            f[a, b] = f_ab
+    for i, cluster in enumerate(clusters):
+        columns.append([])
+        for c in range(number_columns):
+            columns[i].append({})
+            for sequence in cluster:
+                columns[i][c][sequence[c]] = columns[i][c].setdefault(sequence[c], 0) + 1
+    
+    # Iterate over each possible pair of distinct clusters
+    for i in range(len(clusters)):
+        print("Cluster", i)
+        for j in range(len(clusters)):
+            weight = clusters_weights[i] * clusters_weights[j]
+            # For each column of amino acid
+            for col in range(number_columns):
+                for a, frequency_a in columns[i][col].items():
+                    for b, frequency_b in columns[j][col].items():
+                        f[a, b] += weight * frequency_a * frequency_b
     return f
     
+def normalized_sum(matrices):
+    """Compute the mean of the given matrices."""
+    
+    keys = matrices[0].keys
+    res = CharMatrix(keys, 0)
+    
+    for a in keys:
+        for b in keys[keys.find(a):]:
+            res[a, b] = mean(matrix[a, b] for matrix in matrices)
+    
+    return res
+    
 def biological_occurence_probabilities(f):
+    
     q = deepcopy(f)
     upper_sum = 0
     
@@ -174,7 +193,7 @@ def residue_probablities(q):
     
 def expected_frequencies(p):
     
-    e = CharMatrix(amino_acids)
+    e = CharMatrix(amino_acids, 0)
     
     for a in amino_acids:
         for b in amino_acids[amino_acids.find(a):]:
@@ -185,23 +204,41 @@ def expected_frequencies(p):
                 
     return e
 
-def blosum(q, e):
+def log_odds_ratio(q, e):
     
-    s = CharMatrix(amino_acids)
+    s = CharMatrix(amino_acids, 0)
     
     for a in amino_acids:
         for b in amino_acids[amino_acids.find(a):]:
-            s[a, b] = 2 * log2(q[a, b] / e[a, b])
+            s[a, b] = round(2 * log2(q[a, b] / e[a, b]))
+    
+    return s
+
+def make_blosum(domain_filename, number_blocks, required_identity):
+    
+    print("Making BLOSUM" + str(round(required_identity * 100)), "from", domain_filename)
+    filenames = split_domain(domain_filename, number_blocks)
+    frequencies = []
+    
+    for filename in filenames:
+        print("Clustering", filename, "...")
+        clusters = make_clusters(filename, required_identity)
+        print("Computing frequencies...")
+        frequencies.append(weighted_frequencies(clusters))
+        
+    print("Normalizing BLOCKS...")
+    f = normalized_sum(frequencies)
+    print("Computing other matrices...")
+    q = biological_occurence_probabilities(f)
+    p = residue_probablities(q)
+    e = expected_frequencies(p)
+    s = log_odds_ratio(q, e)
     
     return s
 
 def main():
-    # Generate PDZ-domain-A.fasta and PDZ-domain-B.fasta
-    split_domain("PDZ-domain.fasta", 2)
-    
-    # Generate SH3-domain-A.fasta, SH3-domain-B.fasta, SH3-domain-C.fasta
-    # and SH3-domain-D.fasta
-    split_domain("SH3-domain.fasta", 4)
+    print(make_blosum("PDZ-domain.fasta", 2, 0.7))
+    #make_blosum("SH3-domain.fasta", 4, 0.4)
 
 if __name__ == "__main__":
-    main()
+    cProfile.run("main()")

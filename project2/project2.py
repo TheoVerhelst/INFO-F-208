@@ -3,8 +3,10 @@ from math import log2
 from statistics import mean
 from copy import deepcopy
 import cProfile
+from time import clock
 
 amino_acids = "ARNDCEQGHILKMFPSTWYV"
+gap_char = "X"
 
 class CharMatrix:
     """Represents a triangular matrix indexed by a finite set of characters.
@@ -19,33 +21,28 @@ class CharMatrix:
             value: the initial value to put in the cells.
         """
         self.keys = "".join(list(keys))
+        # This dict speeds up the translation amino acid => index in self.matrix
+        self.indices = dict((key, i) for i, key in enumerate(keys))
         self.matrix = [[value] * len(self.keys) for i in range(len(self.keys))]
     
     def __getitem__(self, key):
-        return self.matrix[self.keys.find(key[0])][self.keys.find(key[1])]
+        return self.matrix[self.indices[key[0]]][self.indices[key[1]]]
             
     def __setitem__(self, key, value):
-        self.matrix[self.keys.find(key[0])][self.keys.find(key[1])] = value
+        self.matrix[self.indices[key[0]]][self.indices[key[1]]] = value
     
     def __str__(self):
         """Converts the matrix to a string."""
         
         cell_width = max(max(len(str(c)) for c in line) for line in self.matrix)
-        res = (" " * cell_width) + " ".join(c for c in self.keys) + "\n"
+        res = (" " * cell_width) + " ".join([c.rjust(cell_width) for c in self.keys]) + "\n"
         
-        for i, line in enumerate(self.matrix):
+        for i in range(len(self.matrix)):
             res += str(self.keys[i]).rjust(cell_width)
-            
-            for cell in line:
-                res += str(cell).rjust(cell_width) + " "
-                
+            for j in range(len(self.matrix[i])):
+                res += str(self.matrix[j][i]).rjust(cell_width) + " "
             res += "\n"
-            
         return res
-            
-    def append(self, iterable):
-        """Adds a line to the bottom of the matrix."""
-        self.matrix.append(list(iterable))
     
 def split_domain(domain_filename, number_blocks):
     """Reads a .fasta file containing blocks of a domain, and writes the blocks
@@ -134,29 +131,30 @@ def weighted_frequencies(clusters):
     f = CharMatrix(amino_acids, 0)
     clusters_weights = [1 / len(cluster) for cluster in clusters]
     number_columns = len(clusters[0][0])
-    counts = []
+    number_clusters = len(clusters)
+    counts = [[{} for j in range(number_columns)] for i in range(number_clusters)]
     
     for i, cluster in enumerate(clusters):
-        columns.append([])
-        for c in range(number_columns):
-            columns[i].append({})
-            for sequence in cluster:
-                columns[i][c][sequence[c]] = columns[i][c].setdefault(sequence[c], 0) + 1
+        for sequence in cluster:
+            for c in range(number_columns):
+                if sequence[c] != gap_char:
+                    counts[i][c][sequence[c]] = counts[i][c].setdefault(sequence[c], 0) + 1
     
     # Iterate over each possible pair of distinct clusters
-    for i in range(len(clusters)):
-        print("Cluster", i)
-        for j in range(len(clusters)):
+    for i in range(number_clusters):
+        for j in range(i + 1, number_clusters):
             weight = clusters_weights[i] * clusters_weights[j]
             # For each column of amino acid
             for col in range(number_columns):
-                for a, frequency_a in columns[i][col].items():
-                    for b, frequency_b in columns[j][col].items():
-                        f[a, b] += weight * frequency_a * frequency_b
+                for a, frequency_a in counts[i][col].items():
+                    for b, frequency_b in counts[j][col].items():
+                            f[a, b] += weight * frequency_a * frequency_b
+                            if a != b:
+                                f[b, a] += weight * frequency_a * frequency_b
     return f
     
 def normalized_sum(matrices):
-    """Compute the mean of the given matrices."""
+    """Computes the mean of the given matrices."""
     
     keys = matrices[0].keys
     res = CharMatrix(keys, 0)
@@ -170,15 +168,15 @@ def normalized_sum(matrices):
 def biological_occurence_probabilities(f):
     
     q = deepcopy(f)
-    upper_sum = 0
+    total_number_substitutions = 0
     
     for a in amino_acids:
         for b in amino_acids[amino_acids.find(a):]:
-            upper_sum += f[a, b]
+            total_number_substitutions += f[a, b]
     
     for a in amino_acids:
-        for b in amino_acids[amino_acids.find(a):]:
-            q[a, b] = f[a, b] / upper_sum
+        for b in amino_acids:
+            q[a, b] = f[a, b] / total_number_substitutions
     
     return q
 
@@ -196,7 +194,7 @@ def expected_frequencies(p):
     e = CharMatrix(amino_acids, 0)
     
     for a in amino_acids:
-        for b in amino_acids[amino_acids.find(a):]:
+        for b in amino_acids:
             if a == b:
                 e[a, b] = p[amino_acids.index(a)] ** 2
             else:
@@ -209,7 +207,7 @@ def log_odds_ratio(q, e):
     s = CharMatrix(amino_acids, 0)
     
     for a in amino_acids:
-        for b in amino_acids[amino_acids.find(a):]:
+        for b in amino_acids:
             s[a, b] = round(2 * log2(q[a, b] / e[a, b]))
     
     return s
@@ -235,10 +233,14 @@ def make_blosum(domain_filename, number_blocks, required_identity):
     s = log_odds_ratio(q, e)
     
     return s
-
+    
 def main():
-    print(make_blosum("PDZ-domain.fasta", 2, 0.7))
-    #make_blosum("SH3-domain.fasta", 4, 0.4)
+    #print(make_blosum("PDZ-domain.fasta", 2, 0.4))
+    sh3_70 = make_blosum("SH3-domain.fasta", 4, 0.7)
+    print(sh3_70)
 
 if __name__ == "__main__":
-    cProfile.run("main()")
+    #cProfile.run("main()")
+    t1 = clock()
+    main()
+    print(clock() - t1)

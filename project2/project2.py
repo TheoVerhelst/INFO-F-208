@@ -1,6 +1,5 @@
 from os.path import splitext
 from math import log2
-from statistics import mean
 
 amino_acids = "ARNDCQEGHILKMFPSTWYV"
 # This dict speeds up the translation amino acid => index for amino_acids
@@ -167,12 +166,12 @@ def normalized_sum(matrices):
     
     for a in keys:
         for b in keys[keys.index(a):]:
-            res[a, b] = mean(matrix[a, b] for matrix in matrices)
+            res[a, b] = sum(matrix[a, b] for matrix in matrices)
     
     return res
     
 def biological_probabilities(f):
-    """Computes the probabilities of substitution in the bioligical pattern,
+    """Computes the probabilities of substitution in the biological pattern,
     i.e. the matrix q in the slides.
     """
     
@@ -223,7 +222,7 @@ def log_odds_ratio(q, e):
     
     for a in amino_acids:
         for b in amino_acids[amino_acids_indices[a]:]:
-            s[a, b] = round(2 * log2(q[a, b] / e[a, b]))
+            s[a, b] = 0 if q[a, b] == 0 else round(2 * log2(q[a, b] / e[a, b]))
     
     return s
 
@@ -265,10 +264,13 @@ def make_blosum(domain_filename, number_blocks, required_identity, print_info = 
     return s
     
 def main():
-    print(make_blosum("PDZ-domain.fasta", 2, 0.4, False))
-    #print(make_blosum("SH3-domain.fasta", 4, 0.4, False))
-    #print(make_blosum("PDZ-domain.fasta", 2, 0.7, False))
-    #print(make_blosum("SH3-domain.fasta", 4, 0.7, False))
+    print(make_blosum("PDZ-domain.fasta", 2, 0.4, True))
+    print(make_blosum("SH3-domain.fasta", 4, 0.4, True))
+    print(make_blosum("PDZ-domain.fasta", 2, 0.7, True))
+    print(make_blosum("SH3-domain.fasta", 4, 0.7, True))
 
+from time import clock
 if __name__ == "__main__":
+    t = clock()
     main()
+    print(clock() - t)

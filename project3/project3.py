@@ -11,7 +11,7 @@ p={ "E" : 0.0674, "H" : 0.0227, "S" : 0.066,  "K" : 0.0582, "Y" : 0.0292,
 	"Q" : 0.0393, "A" : 0.0826, "V" : 0.0687, "F" : 0.0386, "C" : 0.0137,
 	"N" : 0.0406, "P" : 0.0472, "I" : 0.0593, "D" : 0.0546, "G" : 0.0708}
 
-logBase = 10
+logBase = 2
 
 class Pssm:
     def __init__(self, filename):
@@ -64,9 +64,15 @@ class Pssm:
 def main():
     muscle = "msaresults-MUSCLE.fasta"
     clustal = "msaresults-CLUSTAL.fasta"
-    #pssm = Pssm(muscle)
-    pssm = Pssm(clustal)
+    pssm = Pssm(muscle)
+    #pssm = Pssm(clustal)
+    
     print(pssm)
+    threshold = 3.8
+    for i, column in enumerate(pssm.matrix):
+        for aa in column:
+            if column[aa] > threshold:
+                print("* Amino acid", aa, "at index", i)
     
 if __name__ == "__main__":
     main()

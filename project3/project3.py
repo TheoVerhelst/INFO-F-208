@@ -61,5 +61,12 @@ class Pssm:
         res += "\n"
         return res
 
-pssm = Pssm("msaresults-MUSCLE.fasta")
-print(pssm)
+def main():
+    muscle = "msaresults-MUSCLE.fasta"
+    clustal = "msaresults-CLUSTAL.fasta"
+    #pssm = Pssm(muscle)
+    pssm = Pssm(clustal)
+    print(pssm)
+    
+if __name__ == "__main__":
+    main()

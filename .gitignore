@@ -2,3 +2,5 @@
 *.zip
 ve/
 project4/dataset/
+*/.ipynb_checkpoints/
+

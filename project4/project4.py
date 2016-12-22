@@ -27,7 +27,7 @@ def parse_dssp(filename, sequence):
         "T" : "T",
         "C" : "C",
         "S" : "C",
-        " "  : "C"
+        " " : "C"
     }
     # These values has been found manually, it seems that all the database
     # matches this format
@@ -94,7 +94,7 @@ def predict(f_s, f_s_r, f_s_r_rm, sequence):
         for s in structures:
             other_s = [sp for sp in structures if sp != s]
             score = log(f_s_r[(aa, s)] / sum(f_s_r[aa, sp] for sp in other_s), log_base)
-            score += log(sum(f_s[sp] for sp in other_s) / f_s[s])
+            score += log(sum(f_s[sp] for sp in other_s) / f_s[s], log_base)
             for m in range(-window_width, window_width + 1):
                 if m != 0 and i + m >= 0 and i + m < len(sequence):
                     score += log(f_s_r_rm[(aa, s, sequence[i+m])]

@@ -58,16 +58,14 @@ def parse_dssp(filename, sequence):
                 res.append((amino_acid, classes[structure]))
         return res
         
-def get_all_sequences(dssp_prefix, cath_info_filename):
+def get_all_sequences(dssp_directory, cath_info_filename):
     res = []
     for parse_data in parse_cath(cath_info_filename):
-        res.append(parse_dssp(dssp_prefix + parse_data["file"] + ".dssp", parse_data["sequence"]))
+        res.append(parse_dssp(dssp_directory + parse_data["file"] + ".dssp", parse_data["sequence"]))
     return res
 
-def train():
-    dssp_prefix = "dataset/dssp/"
-    cath_info_filename = "dataset/CATH_info.txt"
-    sequences = get_all_sequences(dssp_prefix, cath_info_filename)
+def train(dssp_directory, cath_info_filename):
+    sequences = get_all_sequences(dssp_directory, cath_info_filename)
     
     f_s = {s : 0 for s in structures}
     f_s_r = {(aa, s) : 0 for s in structures for aa in amino_acids}
@@ -93,22 +91,20 @@ def predict(f_s, f_s_r, f_s_r_rm, sequence):
         scores = {}
         for s in structures:
             other_s = [sp for sp in structures if sp != s]
-            score = log(f_s_r[(aa, s)] / sum(f_s_r[aa, sp] for sp in other_s), log_base)
+            score = log(f_s_r[(aa, s)] / sum(f_s_r[(aa, sp)] for sp in other_s), log_base)
             score += log(sum(f_s[sp] for sp in other_s) / f_s[s], log_base)
             for m in range(-window_width, window_width + 1):
                 if m != 0 and i + m >= 0 and i + m < len(sequence):
                     score += log(f_s_r_rm[(aa, s, sequence[i+m])]
                             / sum(f_s_r_rm[(aa, sp, sequence[i+m])] for sp in other_s), log_base)
-                    score += log(sum(f_s_r[aa, sp] for sp in other_s) / f_s_r[(aa, s)], log_base)
+                    score += log(sum(f_s_r[(aa, sp)] for sp in other_s) / f_s_r[(aa, s)], log_base)
             scores[s] = score
-        #scores["max"] = max(scores, key=lambda k:scores[k])
-        res.append({"max" : max(scores, key=lambda k:scores[k])})
+        scores["max"] = max(scores, key=lambda k:scores[k])
+        res.append(scores)
     return res
                     
-def run_tests(f_s, f_s_r, f_s_r_rm):
-    dssp_prefix = "dataset/dssp_test/"
-    cath_info_filename = "dataset/CATH_info_test.txt"
-    sequences = get_all_sequences(dssp_prefix, cath_info_filename)
+def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm):
+    sequences = get_all_sequences(dssp_directory, cath_info_filename)
     
     for i, sequence in enumerate(sequences):
         print("Sequence", i + 1)
@@ -118,12 +114,6 @@ def run_tests(f_s, f_s_r, f_s_r_rm):
                     "predicted" : predicted}
                     # The zip expression unzips `sequence`, and zips the result with `predicted_sequence`
                     for real, predicted in zip(real_sequence, predicted_sequence)]
-        for pos_data in seq_data:
-            if pos_data["real"] == pos_data["predicted"]["max"]:
-                print("X", end="")
-            else:
-                print(" ", end="")
-        print()
         
         Q3 =  sum(1 for pos_data in seq_data if pos_data["real"] == pos_data["predicted"]["max"]) \
                 / len(seq_data)
@@ -153,17 +143,23 @@ def run_tests(f_s, f_s_r, f_s_r_rm):
         print("Q3 =", Q3, ", MCC =", MCC)
 
 def main():
+    # Script parameters
     already_pickled = True
     pickle_filename = "frequencies.pickle"
+    dssp_directory = "dataset/dssp/"
+    cath_info_filename = "dataset/CATH_info.txt"
+    dssp_directory_test = "dataset/dssp_test/"
+    cath_info_filename_test = "dataset/CATH_info_test.txt"
+    
     if already_pickled:
         with open(pickle_filename, 'rb') as file:
             frequencies = pickle.load(file)
     else:
-        frequencies = train()
+        frequencies = train(dssp_directory, cath_info_filename)
         with open(pickle_filename, 'wb') as file:
             pickle.dump(frequencies, file)
             
-    run_tests(*frequencies)
+    run_tests(dssp_directory_test, cath_info_filename_test, *frequencies)
 
 if __name__ == "__main__":
     main()

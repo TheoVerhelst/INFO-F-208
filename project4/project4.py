@@ -3,10 +3,10 @@ import pickle
 import matplotlib.pyplot as plt
 from copy import deepcopy
 
-amino_acids = "ARNDCEQGHILKMFPSTWYVBZXJUO"
+amino_acids = "ARNDCEQGHILKMFPSTWYVBZXJO"
 structures = "HCTE"
 window_width = 8
-log_base = 2
+log_base = 10
 
 def parse_cath(filename):
     res = []
@@ -29,6 +29,7 @@ def parse_dssp(filename, sequence):
         "S" : "C",
         " " : "C"
     }
+    
     # These values has been found manually, it seems that all the database
     # matches this format
     identifier_column = 11
@@ -52,9 +53,9 @@ def parse_dssp(filename, sequence):
                 # If there is no data for secondary structure, then the split
                 # returned the next column, so we force to have empty string
                 if structure not in classes.keys():
-                    raise Value_error("File " + filename + ", line " + str(i) + ": Unknown secondary structure \"" + structure + "\"")
+                    raise ValueError("File " + filename + ", line " + str(i) + ": Unknown secondary structure \"" + structure + "\"")
                 if amino_acid not in amino_acids:
-                    raise Value_error("File " + filename + ", line " + str(i) + ": Unknown amino acid \"" + amino_acid + "\"")
+                    raise ValueError("File " + filename + ", line " + str(i) + ": Unknown amino acid \"" + amino_acid + "\"")
                 res.append((amino_acid, classes[structure]))
         return res
         
@@ -66,23 +67,21 @@ def get_all_sequences(dssp_directory, cath_info_filename):
 
 def train(dssp_directory, cath_info_filename):
     sequences = get_all_sequences(dssp_directory, cath_info_filename)
+    print("Training on", len(sequences), "sequences")
     
     f_s = {s : 0 for s in structures}
     f_s_r = {(aa, s) : 0 for s in structures for aa in amino_acids}
     f_s_r_rm = {(aa, s, aa_i) : 0
                             for aa in amino_acids
                             for s in structures
-                            for aa_i in amino_acids
-                            for i in range(-window_width, window_width + 1)
-                            if i != 0}
-    for sequence in sequences:
+                            for aa_i in amino_acids}
+    for i, sequence in enumerate(sequences):
         for i, (aa, struct) in enumerate(sequence):
             f_s[struct] += 1
             f_s_r[(aa, struct)] += 1
             for m in range(-window_width, window_width + 1):
                 if m != 0 and i + m >= 0 and i + m < len(sequence):
                     f_s_r_rm[(aa, struct, sequence[i + m][0])] += 1
-    
     return f_s, f_s_r, f_s_r_rm
 
 def predict(f_s, f_s_r, f_s_r_rm, sequence):
@@ -90,14 +89,14 @@ def predict(f_s, f_s_r, f_s_r_rm, sequence):
     for i, aa in enumerate(sequence):
         scores = {}
         for s in structures:
-            other_s = [sp for sp in structures if sp != s]
-            score = log(f_s_r[(aa, s)] / sum(f_s_r[(aa, sp)] for sp in other_s), log_base)
-            score += log(sum(f_s[sp] for sp in other_s) / f_s[s], log_base)
+            n_s = [sp for sp in structures if sp != s]
+            score = log(f_s_r[(aa, s)] / sum(f_s_r[(aa, sp)] for sp in n_s), log_base)
+            score += log(sum(f_s[sp] for sp in n_s) / f_s[s], log_base)
             for m in range(-window_width, window_width + 1):
                 if m != 0 and i + m >= 0 and i + m < len(sequence):
                     score += log(f_s_r_rm[(aa, s, sequence[i+m])]
-                            / sum(f_s_r_rm[(aa, sp, sequence[i+m])] for sp in other_s), log_base)
-                    score += log(sum(f_s_r[(aa, sp)] for sp in other_s) / f_s_r[(aa, s)], log_base)
+                            / sum(f_s_r_rm[(aa, sp, sequence[i+m])] for sp in n_s), log_base)
+                    score += log(sum(f_s_r[(aa, sp)] for sp in n_s) / f_s_r[(aa, s)], log_base)
             scores[s] = score
         scores["max"] = max(scores, key=lambda k:scores[k])
         res.append(scores)
@@ -130,7 +129,7 @@ def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm):
                     else:
                         FP += 1
                 else:
-                    if pos_data["real"] == pos_data["predicted"]["max"]:
+                    if pos_data["real"] != structure:
                         TN += 1
                     else:
                         FN += 1
@@ -139,7 +138,7 @@ def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm):
                         sqrt((TP + FP) * (TP + FN) * (TN + FP) * (TN + FN))
             except ZeroDivisionError:
                 MCC[structure] = float("nan")
-    
+        
         print("Q3 =", Q3, ", MCC =", MCC)
 
 def main():

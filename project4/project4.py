@@ -3,7 +3,7 @@ import pickle
 import matplotlib.pyplot as plt
 from copy import deepcopy
 
-amino_acids = "ARNDCEQGHILKMFPSTWYVBZXJO"
+amino_acids = "ARNDCEQGHILKMFPSTWYVBZXJOU"
 structures = "HCTE"
 window_width = 8
 log_base = 10
@@ -79,9 +79,8 @@ def train(dssp_directory, cath_info_filename):
         for i, (aa, struct) in enumerate(sequence):
             f_s[struct] += 1
             f_s_r[(aa, struct)] += 1
-            for m in range(-window_width, window_width + 1):
-                if m != 0 and i + m >= 0 and i + m < len(sequence):
-                    f_s_r_rm[(aa, struct, sequence[i + m][0])] += 1
+            for aa_m, struct_m in sequence[max(0, i - window_width) : i] + sequence[i + 1 : i + window_width + 1]:
+                f_s_r_rm[(aa, struct, aa_m)] += 1
     return f_s, f_s_r, f_s_r_rm
 
 def predict(f_s, f_s_r, f_s_r_rm, sequence):
@@ -89,14 +88,13 @@ def predict(f_s, f_s_r, f_s_r_rm, sequence):
     for i, aa in enumerate(sequence):
         scores = {}
         for s in structures:
-            n_s = [sp for sp in structures if sp != s]
-            score = log(f_s_r[(aa, s)] / sum(f_s_r[(aa, sp)] for sp in n_s), log_base)
-            score += log(sum(f_s[sp] for sp in n_s) / f_s[s], log_base)
-            for m in range(-window_width, window_width + 1):
-                if m != 0 and i + m >= 0 and i + m < len(sequence):
-                    score += log(f_s_r_rm[(aa, s, sequence[i+m])]
-                            / sum(f_s_r_rm[(aa, sp, sequence[i+m])] for sp in n_s), log_base)
-                    score += log(sum(f_s_r[(aa, sp)] for sp in n_s) / f_s_r[(aa, s)], log_base)
+            n_s = [s2 for s2 in structures if s2 != s]
+            score = log(f_s_r[(aa, s)] / sum(f_s_r[(aa, s2)] for s2 in n_s), log_base)
+            score += log(sum(f_s[s2] for s2 in n_s) / f_s[s], log_base)
+            for aa_m in sequence[max(0, i - window_width) : i] + sequence[i + 1 : i + window_width + 1]:
+                score += log(f_s_r_rm[(aa, s, aa_m)]
+                        / sum(f_s_r_rm[(aa, s2, aa_m)] for s2 in n_s), log_base)
+                score += log(sum(f_s_r[(aa, s2)] for s2 in n_s) / f_s_r[(aa, s)], log_base)
             scores[s] = score
         scores["max"] = max(scores, key=lambda k:scores[k])
         res.append(scores)
@@ -107,8 +105,8 @@ def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm):
     
     for i, sequence in enumerate(sequences):
         print("Sequence", i + 1)
-        real_sequence = [t[1] for t in sequence]
-        predicted_sequence = predict(f_s, f_s_r, f_s_r_rm, real_sequence)
+        aa_sequence, real_sequence = zip(*sequence)
+        predicted_sequence = predict(f_s, f_s_r, f_s_r_rm, aa_sequence)
         seq_data = [{"real" : real,
                     "predicted" : predicted}
                     # The zip expression unzips `sequence`, and zips the result with `predicted_sequence`

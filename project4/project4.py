@@ -1,6 +1,6 @@
 from math import log, sqrt
 import pickle
-import matplotlib.pyplot as plt
+from matplotlib import pyplot
 from copy import deepcopy
 
 amino_acids = "ARNDCEQGHILKMFPSTWYVBZXJOU"
@@ -102,9 +102,15 @@ def predict(f_s, f_s_r, f_s_r_rm, sequence):
                     
 def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm):
     sequences = get_all_sequences(dssp_directory, cath_info_filename)
+    """
+    big_sequence = []
+    for sequence in sequences:
+        big_sequence += sequence
+    sequences = [big_sequence]
+    """
     
     for i, sequence in enumerate(sequences):
-        print("Sequence", i + 1)
+        print("Predicting sequence " + str(i + 1) + "...")
         aa_sequence, real_sequence = zip(*sequence)
         predicted_sequence = predict(f_s, f_s_r, f_s_r_rm, aa_sequence)
         seq_data = [{"real" : real,
@@ -118,24 +124,48 @@ def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm):
         
         for structure in structures:
             TP, TN, FP, FN = 0, 0, 0, 0
+            P = sum(1 for pos_data in seq_data if structure == pos_data["predicted"]["max"])
+            N = len(seq_data) - P
+            TP_roc = 0
+            FP_roc = 0
+            prev_score = float("-inf")
+            roc_curve_x, roc_curve_y = [], []
             # Sort by score from this structure, in order to construct the ROC curve
-            #seq_data.sort(key=lambda pos_data : pos_data["predicted"][structure])
+            seq_data.sort(key=lambda pos_data : pos_data["predicted"][structure], reverse=True)
+            
             for pos_data in seq_data:
+                score = pos_data["predicted"][structure]
+                
+                if score != prev_score:
+                    roc_curve_x.append(FP_roc/N)
+                    roc_curve_y.append(TP_roc/P)
+                    
                 if pos_data["predicted"]["max"] == structure:
                     if pos_data["real"] == pos_data["predicted"]["max"]:
                         TP += 1
                     else:
                         FP += 1
+                    TP_roc += 1
                 else:
                     if pos_data["real"] != structure:
                         TN += 1
                     else:
                         FN += 1
+                    FP_roc += 1
+
             try:
                 MCC[structure] =  (TP * TN - FP * FN) / \
                         sqrt((TP + FP) * (TP + FN) * (TN + FP) * (TN + FN))
             except ZeroDivisionError:
                 MCC[structure] = float("nan")
+            
+            roc_curve_x.append(FP_roc/N)
+            roc_curve_y.append(TP_roc/P)
+            pyplot.plot(roc_curve_x, roc_curve_y)
+            pyplot.ylabel("FPR")
+            pyplot.ylabel("TPR")
+            pyplot.title("ROC curve for " + structure)
+            pyplot.show()
         
         print("Q3 =", Q3, ", MCC =", MCC)
 

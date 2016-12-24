@@ -6,7 +6,7 @@ from copy import deepcopy
 amino_acids = "ARNDCEQGHILKMFPSTWYVBZXJOU"
 structures = "HCTE"
 window_width = 8
-log_base = 10
+log_base = 2
 
 def parse_cath(filename):
     res = []
@@ -16,7 +16,8 @@ def parse_cath(filename):
     return res
 
 def parse_dssp(filename, sequence):
-    res = []
+    aa_sequence = []
+    struct_sequence = []
     classes = \
     {
         "H" : "H",
@@ -47,17 +48,20 @@ def parse_dssp(filename, sequence):
         for line in file:
             i += 1
             identifier = line[identifier_column].upper()
-            amino_acid = line[amino_acid_column].upper()
-            structure = line[structure_column].upper()
+            
             if identifier.lower() == sequence.lower():
-                # If there is no data for secondary structure, then the split
-                # returned the next column, so we force to have empty string
+                amino_acid = line[amino_acid_column].upper()
+                structure = line[structure_column].upper()
+                
                 if structure not in classes.keys():
                     raise ValueError("File " + filename + ", line " + str(i) + ": Unknown secondary structure \"" + structure + "\"")
                 if amino_acid not in amino_acids:
                     raise ValueError("File " + filename + ", line " + str(i) + ": Unknown amino acid \"" + amino_acid + "\"")
-                res.append((amino_acid, classes[structure]))
-        return res
+            
+                aa_sequence.append(amino_acid)
+                struct_sequence.append(classes[structure])
+                
+        return (aa_sequence, struct_sequence)
         
 def get_all_sequences(dssp_directory, cath_info_filename):
     res = []
@@ -67,19 +71,21 @@ def get_all_sequences(dssp_directory, cath_info_filename):
 
 def train(dssp_directory, cath_info_filename):
     sequences = get_all_sequences(dssp_directory, cath_info_filename)
-    print("Training on", len(sequences), "sequences")
-    
     f_s = {s : 0 for s in structures}
     f_s_r = {(aa, s) : 0 for s in structures for aa in amino_acids}
     f_s_r_rm = {(aa, s, aa_i) : 0
                             for aa in amino_acids
                             for s in structures
                             for aa_i in amino_acids}
-    for i, sequence in enumerate(sequences):
-        for i, (aa, struct) in enumerate(sequence):
+                            
+    print("Training on", len(sequences), "sequences")
+                            
+    for aa_sequence, struct_sequence in sequences:
+        for i, (aa, struct) in enumerate(zip(aa_sequence, struct_sequence)):
             f_s[struct] += 1
             f_s_r[(aa, struct)] += 1
-            for aa_m, struct_m in sequence[max(0, i - window_width) : i] + sequence[i + 1 : i + window_width + 1]:
+            for aa_m, struct_m in sequence[max(0, i - window_width) : i] \
+                                + sequence[i + 1 : i + window_width + 1]:
                 f_s_r_rm[(aa, struct, aa_m)] += 1
     return f_s, f_s_r, f_s_r_rm
 
@@ -89,69 +95,65 @@ def predict(f_s, f_s_r, f_s_r_rm, sequence):
         scores = {}
         for s in structures:
             n_s = [s2 for s2 in structures if s2 != s]
+            
             score = log(f_s_r[(aa, s)] / sum(f_s_r[(aa, s2)] for s2 in n_s), log_base)
             score += log(sum(f_s[s2] for s2 in n_s) / f_s[s], log_base)
+            
             for aa_m in sequence[max(0, i - window_width) : i] + sequence[i + 1 : i + window_width + 1]:
                 score += log(f_s_r_rm[(aa, s, aa_m)]
                         / sum(f_s_r_rm[(aa, s2, aa_m)] for s2 in n_s), log_base)
                 score += log(sum(f_s_r[(aa, s2)] for s2 in n_s) / f_s_r[(aa, s)], log_base)
+                
             scores[s] = score
         scores["max"] = max(scores, key=lambda k:scores[k])
         res.append(scores)
     return res
-                    
-def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm):
+
+def count(iterable, pred):
+    return sum(1 for e in iterable if pred(e))
+
+def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm, all_in_one=False, plot=False):
     sequences = get_all_sequences(dssp_directory, cath_info_filename)
-    """
-    big_sequence = []
-    for sequence in sequences:
-        big_sequence += sequence
-    sequences = [big_sequence]
-    """
+    results = []
     
-    for i, sequence in enumerate(sequences):
-        print("Predicting sequence " + str(i + 1) + "...")
-        aa_sequence, real_sequence = zip(*sequence)
+    for aa_sequence, real_sequence in sequences:
         predicted_sequence = predict(f_s, f_s_r, f_s_r_rm, aa_sequence)
-        seq_data = [{"real" : real,
-                    "predicted" : predicted}
-                    # The zip expression unzips `sequence`, and zips the result with `predicted_sequence`
-                    for real, predicted in zip(real_sequence, predicted_sequence)]
+        result = [{"real" : r, "predicted" : p}
+                    for r, p in zip(real_sequence, predicted_sequence)]
+        if all_in_one:
+            results += result
+        else:
+            results.append(result)
+            
+    if all_in_one:
+        results = [results]
         
-        Q3 =  sum(1 for pos_data in seq_data if pos_data["real"] == pos_data["predicted"]["max"]) \
-                / len(seq_data)
+    for i, result in enumerate(results):
+        print("Predicting sequence " + str(i + 1) + "...")
+        Q3 =  count(result, lambda pos:pos["real"] == pos["predicted"]["max"]) / len(result)
         MCC = {}
         
         for structure in structures:
             TP, TN, FP, FN = 0, 0, 0, 0
-            P = sum(1 for pos_data in seq_data if structure == pos_data["predicted"]["max"])
-            N = len(seq_data) - P
-            TP_roc = 0
-            FP_roc = 0
-            prev_score = float("-inf")
-            roc_curve_x, roc_curve_y = [], []
+            P = count(result, lambda pos: structure == pos["predicted"]["max"])
+            N = len(result) - P
+            roc_curve = []
             # Sort by score from this structure, in order to construct the ROC curve
-            seq_data.sort(key=lambda pos_data : pos_data["predicted"][structure], reverse=True)
+            result.sort(key=lambda pos : pos["predicted"][structure], reverse=True)
             
-            for pos_data in seq_data:
-                score = pos_data["predicted"][structure]
-                
-                if score != prev_score:
-                    roc_curve_x.append(FP_roc/N)
-                    roc_curve_y.append(TP_roc/P)
+            for pos in result:
+                roc_curve.append(((TN + FN)/N, (TP + FP)/P))
                     
-                if pos_data["predicted"]["max"] == structure:
-                    if pos_data["real"] == pos_data["predicted"]["max"]:
+                if pos["predicted"]["max"] == structure:
+                    if pos["real"] == pos["predicted"]["max"]:
                         TP += 1
                     else:
                         FP += 1
-                    TP_roc += 1
                 else:
-                    if pos_data["real"] != structure:
+                    if pos["real"] != structure:
                         TN += 1
                     else:
                         FN += 1
-                    FP_roc += 1
 
             try:
                 MCC[structure] =  (TP * TN - FP * FN) / \
@@ -159,15 +161,17 @@ def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm):
             except ZeroDivisionError:
                 MCC[structure] = float("nan")
             
-            roc_curve_x.append(FP_roc/N)
-            roc_curve_y.append(TP_roc/P)
-            pyplot.plot(roc_curve_x, roc_curve_y)
-            pyplot.ylabel("FPR")
-            pyplot.ylabel("TPR")
-            pyplot.title("ROC curve for " + structure)
-            pyplot.show()
+            if plot:
+                roc_curve.append(((TN + FN)/N, (TP + FP)/P))
+                pyplot.plot(*zip(*roc_curve), label="Structure " + structure)
+                pyplot.ylabel("FPR")
+                pyplot.ylabel("TPR")
         
         print("Q3 =", Q3, ", MCC =", MCC)
+        pyplot.title("ROC curve")
+        pyplot.legend()
+        pyplot.show()
+        
 
 def main():
     # Script parameters
@@ -178,6 +182,7 @@ def main():
     dssp_directory_test = "dataset/dssp_test/"
     cath_info_filename_test = "dataset/CATH_info_test.txt"
     
+    print("Gathering statistics about the training set...")
     if already_pickled:
         with open(pickle_filename, 'rb') as file:
             frequencies = pickle.load(file)
@@ -186,7 +191,8 @@ def main():
         with open(pickle_filename, 'wb') as file:
             pickle.dump(frequencies, file)
             
-    run_tests(dssp_directory_test, cath_info_filename_test, *frequencies)
+    print("Running tests...")
+    run_tests(dssp_directory_test, cath_info_filename_test, *frequencies, all_in_one=True, plot=True)
 
 if __name__ == "__main__":
     main()

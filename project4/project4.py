@@ -7,6 +7,7 @@ amino_acids = "ARNDCEQGHILKMFPSTWYVBZXJOU"
 structures = "HCTE"
 window_width = 8
 log_base = 2
+terminal_width = 140
 
 def parse_cath(filename):
     res = []
@@ -16,8 +17,8 @@ def parse_cath(filename):
     return res
 
 def parse_dssp(filename, sequence):
-    aa_sequence = []
-    struct_sequence = []
+    aa_sequence = ""
+    struct_sequence = ""
     classes = \
     {
         "H" : "H",
@@ -58,8 +59,8 @@ def parse_dssp(filename, sequence):
                 if amino_acid not in amino_acids:
                     raise ValueError("File " + filename + ", line " + str(i) + ": Unknown amino acid \"" + amino_acid + "\"")
             
-                aa_sequence.append(amino_acid)
-                struct_sequence.append(classes[structure])
+                aa_sequence += amino_acid
+                struct_sequence += classes[structure]
                 
         return (aa_sequence, struct_sequence)
         
@@ -109,48 +110,54 @@ def predict(f_s, f_s_r, f_s_r_rm, sequence):
         res.append(scores)
     return res
 
-def count(iterable, pred):
-    return sum(1 for e in iterable if pred(e))
+def print_prediction(aa_sequence, real_sequence, predicted_sequence):
+    predicted_sequence = "".join(predicted["max"] for predicted in predicted_sequence)
+    first_line = "Amino acids sequence     :"
+    
+    index = terminal_width - len(first_line) - 1
+    print(first_line, aa_sequence[:index])
+    print("Real structure sequence  :", real_sequence[:index])
+    print("Predicted struct sequence:", predicted_sequence[:index])
+    print()
+    
+    while index < len(aa_sequence):
+        print(aa_sequence[index:index + terminal_width])
+        print(real_sequence[index:index + terminal_width])
+        print(predicted_sequence[index:index + terminal_width])
+        print()
+        index += terminal_width
 
-def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm, all_in_one=False, plot=False):
+def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm, plot=False):
     sequences = get_all_sequences(dssp_directory, cath_info_filename)
     results = []
     
-    for aa_sequence, real_sequence in sequences:
+    for i, (aa_sequence, real_sequence) in enumerate(sequences):
         predicted_sequence = predict(f_s, f_s_r, f_s_r_rm, aa_sequence)
-        result = [{"real" : r, "predicted" : p}
-                    for r, p in zip(real_sequence, predicted_sequence)]
-        if all_in_one:
-            results += result
-        else:
-            results.append(result)
-            
-    if all_in_one:
-        results = [results]
+        print("Sequence", i + 1)
+        print_prediction(aa_sequence, real_sequence, predicted_sequence)
+        zipped = list(zip(real_sequence, predicted_sequence))
         
-    for i, result in enumerate(results):
-        print("Predicting sequence " + str(i + 1) + "...")
-        Q3 =  count(result, lambda pos:pos["real"] == pos["predicted"]["max"]) / len(result)
+        Q3 =  sum(1 for pos in zipped if pos[0] == pos[1]["max"]) / len(zipped)
         MCC = {}
         
         for structure in structures:
             TP, TN, FP, FN = 0, 0, 0, 0
-            P = count(result, lambda pos: structure == pos["predicted"]["max"])
-            N = len(result) - P
+            P = sum(1 for pos in zipped if structure == pos[1]["max"])
+            N = len(zipped) - P
             roc_curve = []
             # Sort by score from this structure, in order to construct the ROC curve
-            result.sort(key=lambda pos : pos["predicted"][structure], reverse=True)
+            zipped.sort(key=lambda pos : pos[1][structure], reverse=True)
             
-            for pos in result:
+            for real, predicted in zipped:
                 roc_curve.append(((TN + FN)/N, (TP + FP)/P))
                     
-                if pos["predicted"]["max"] == structure:
-                    if pos["real"] == pos["predicted"]["max"]:
+                if predicted["max"] == structure:
+                    if real == predicted["max"]:
                         TP += 1
                     else:
                         FP += 1
                 else:
-                    if pos["real"] != structure:
+                    if real != structure:
                         TN += 1
                     else:
                         FN += 1
@@ -171,6 +178,9 @@ def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm, all_in_o
         pyplot.title("ROC curve")
         pyplot.legend()
         pyplot.show()
+        print()
+        print("*" * terminal_width)
+        print()
         
 
 def main():
@@ -192,7 +202,7 @@ def main():
             pickle.dump(frequencies, file)
             
     print("Running tests...")
-    run_tests(dssp_directory_test, cath_info_filename_test, *frequencies, all_in_one=True, plot=True)
+    run_tests(dssp_directory_test, cath_info_filename_test, *frequencies, plot=True)
 
 if __name__ == "__main__":
     main()

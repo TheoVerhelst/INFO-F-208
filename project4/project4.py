@@ -5,9 +5,11 @@ from copy import deepcopy
 
 amino_acids = "ARNDCEQGHILKMFPSTWYVBZXJOU"
 structures = "HCTE"
+
 window_width = 8
 log_base = 2
 terminal_width = 140
+plot = False
 
 def parse_cath(filename):
     res = []
@@ -142,14 +144,17 @@ def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm, plot=Fal
         
         for structure in structures:
             TP, TN, FP, FN = 0, 0, 0, 0
-            P = sum(1 for pos in zipped if structure == pos[1]["max"])
-            N = len(zipped) - P
-            roc_curve = []
-            # Sort by score from this structure, in order to construct the ROC curve
-            zipped.sort(key=lambda pos : pos[1][structure], reverse=True)
+            
+            if plot:
+                P = sum(1 for pos in zipped if structure == pos[1]["max"])
+                N = len(zipped) - P
+                roc_curve = []
+                # Sort by score from this structure, in order to construct the ROC curve
+                zipped.sort(key=lambda pos : pos[1][structure], reverse=True)
             
             for real, predicted in zipped:
-                roc_curve.append(((TN + FN)/N, (TP + FP)/P))
+                if plot:
+                    roc_curve.append(((TN + FN)/N, (TP + FP)/P))
                     
                 if predicted["max"] == structure:
                     if real == predicted["max"]:
@@ -175,13 +180,14 @@ def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm, plot=Fal
                 pyplot.ylabel("TPR")
         
         print("Q3 =", Q3, ", MCC =", MCC)
-        pyplot.title("ROC curve")
-        pyplot.legend()
-        pyplot.show()
         print()
         print("*" * terminal_width)
         print()
         
+        if plot:
+            pyplot.title("ROC curve")
+            pyplot.legend()
+            pyplot.show()
 
 def main():
     # Script parameters
@@ -202,7 +208,8 @@ def main():
             pickle.dump(frequencies, file)
             
     print("Running tests...")
-    run_tests(dssp_directory_test, cath_info_filename_test, *frequencies, plot=True)
+    run_tests(dssp_directory_test, cath_info_filename_test, *frequencies,
+            plot=plot)
 
 if __name__ == "__main__":
     main()

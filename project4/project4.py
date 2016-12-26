@@ -112,14 +112,14 @@ def predict(f_s, f_s_r, f_s_r_rm, sequence):
         res.append(scores)
     return res
 
-def print_prediction(aa_sequence, real_sequence, predicted_sequence):
+def print_prediction(i, aa_sequence, real_sequence, predicted_sequence, Q3, MCC):
     predicted_sequence = "".join(predicted["max"] for predicted in predicted_sequence)
-    first_line = "Amino acids sequence     :"
-    
+    print("Sequence", i + 1)
+    first_line = "Amino acids sequence:"
     index = terminal_width - len(first_line) - 1
     print(first_line, aa_sequence[:index])
-    print("Real structure sequence  :", real_sequence[:index])
-    print("Predicted struct sequence:", predicted_sequence[:index])
+    print("Real struct sequence:", real_sequence[:index])
+    print("Predicted sequence  :", predicted_sequence[:index])
     print()
     
     while index < len(aa_sequence):
@@ -128,6 +128,11 @@ def print_prediction(aa_sequence, real_sequence, predicted_sequence):
         print(predicted_sequence[index:index + terminal_width])
         print()
         index += terminal_width
+        
+    print("Q3 =", Q3, ", MCC =", ", ".join(key + ": " + str(value) for key, value in MCC.items()))
+    print()
+    print("*" * terminal_width)
+    print()
 
 def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm, plot=False):
     sequences = get_all_sequences(dssp_directory, cath_info_filename)
@@ -135,8 +140,6 @@ def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm, plot=Fal
     
     for i, (aa_sequence, real_sequence) in enumerate(sequences):
         predicted_sequence = predict(f_s, f_s_r, f_s_r_rm, aa_sequence)
-        print("Sequence", i + 1)
-        print_prediction(aa_sequence, real_sequence, predicted_sequence)
         zipped = list(zip(real_sequence, predicted_sequence))
         
         Q3 =  sum(1 for pos in zipped if pos[0] == pos[1]["max"]) / len(zipped)
@@ -179,10 +182,7 @@ def run_tests(dssp_directory, cath_info_filename, f_s, f_s_r, f_s_r_rm, plot=Fal
                 pyplot.ylabel("FPR")
                 pyplot.ylabel("TPR")
         
-        print("Q3 =", Q3, ", MCC =", MCC)
-        print()
-        print("*" * terminal_width)
-        print()
+        print_prediction(i, aa_sequence, real_sequence, predicted_sequence, Q3, MCC)
         
         if plot:
             pyplot.title("ROC curve")
